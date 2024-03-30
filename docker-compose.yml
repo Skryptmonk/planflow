@@ -1,0 +1,66 @@
+version: '2.4'
+services:
+  frontend:
+    build:
+      context: frontend
+      dockerfile: Dockerfile
+    ports:
+      - 4000:3000
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: backend
+      dockerfile: Dockerfile
+    ports:
+      - 4001:4001
+
+  vroom:
+    image: vroomvrp/vroom-docker:v1.11.0
+    container_name: vroom_server
+    volumes:
+      - ./vroom-conf/:/conf
+    environment:
+      - VROOM_ROUTER=osrm
+    ports:
+      - 3000:3000
+    depends_on:
+      - osrm
+
+  osrm-extract:
+    image: osrm/osrm-backend
+    volumes:
+      - ./vroom/data:/data
+    command: "osrm-extract -p /opt/car.lua /data/india-latest.osm.pbf"
+    restart: "no"
+
+  osrm-partition:
+    image: osrm/osrm-backend
+    volumes:
+      - ./vroom/data:/data
+    command: "osrm-partition /data/india-latest.osrm"
+    restart: "no"
+    depends_on:
+      - osrm-extract
+
+  osrm-customize:
+    image: osrm/osrm-backend
+    volumes:
+      - ./vroom/data:/data
+    command: "osrm-customize /data/india-latest.osrm"
+    restart: "no"
+    depends_on:
+      - osrm-partition
+
+  osrm:
+    image: osrm/osrm-backend
+    container_name: osrm
+    volumes:
+      - ./vroom/data:/data
+    command: >
+      osrm-routed --max-matching-size 1000 --max-table-size 1000 --max-viaroute-size 1000 --algorithm mld /data/india-latest.osrm
+    ports:
+      - 5000:5000
+    # depends_on:
+    #   - osrm-customize

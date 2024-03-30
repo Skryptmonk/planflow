@@ -1,0 +1,42 @@
+[
+    {
+        "light": "#fcf5e8",
+        "dark": "#f5deb3"
+    },
+    {
+        "light": "#f9ebf7",
+        "dark": "#cb4eb4"
+    },
+    {
+        "light": "#efebf9",
+        "dark": "#6f4ecb"
+    },
+    {
+        "light": "#ebecf9",
+        "dark": "#4e51cb"
+    },
+    {
+        "light": "#ebf9f1",
+        "dark": "#4dcc83"
+    },
+    {
+        "light": "#f2f9eb",
+        "dark": "#86cb4e"
+    },
+    {
+        "light": "#f8f9eb",
+        "dark": "#bdcb4e"
+    },
+    {
+        "light": "#f9f5eb",
+        "dark": "#cba34e"
+    },
+    {
+        "light": "#f9ebeb",
+        "dark": "#cb4e4e"
+    },
+    {
+        "light": "#ebecf9",
+        "dark": "#4e51cb"
+    }
+]

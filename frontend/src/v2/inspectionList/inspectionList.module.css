@@ -1,0 +1,213 @@
+.card {
+    width: calc(100%-10px);
+    box-shadow: 5px 5px 15px 5px rgba(0, 0, 0, 0.2);
+    border-radius: 10px;
+    padding: 10px 15px 5px 15px;
+    transition: all .1s ease-out;
+    border: 3px solid transparent;
+}
+
+.card:hover {
+    box-shadow: 2px 2px 5px 2px rgba(0, 0, 0, 0.2);
+}
+
+.card.active {
+    border: 2px solid rgba(21, 101, 192, .8);
+}
+
+.span.inspectionCount {
+    text-shadow: 0px 0px 2px black;
+    color: #fff;
+    font-weight: 500;
+}
+
+.countLbl {
+    right: 20px;
+    position: absolute;
+    float: right;
+    padding: 2px;
+    padding-top: 1px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 30px;
+    width: 29px;
+    border-radius: 50%;
+    background-color: lightgray;
+    font-weight: 500;
+    color: rgba(21, 101, 192, .8);
+}
+
+.costLbl {
+    color: grey;
+    font-weight: 600;
+    font-size: small;
+}
+
+.expandableCard {
+    padding: 10px;
+    box-shadow: 5px 5px 15px 5px rgba(0, 0, 0, 0.2);
+    border-radius: 5px;
+    padding: 0px 10px;
+}
+
+.card-mainContent>div {
+    margin-right: 18px;
+}
+
+.card-mainContent>div:last-child {
+    margin-right: 0px;
+}
+
+.card-body {
+    display: flex;
+    position: relative;
+    align-items: center;
+    height: 50px;
+    display: flex;
+}
+
+.card-mainContent {
+    width: 400px;
+    position: relative;
+    align-items: center;
+    height: 100%;
+    display: flex;
+}
+
+.card-container {
+    text-align: left;
+    padding: 10px;
+}
+
+.expandHeading {
+    padding-bottom: 1px;
+}
+
+.cardBody {
+    padding-left: 20px;
+}
+
+.span {
+    position: relative;
+    display: block;
+    padding: .2em .2em .2em .5em;
+    background: #eee;
+    color: #000;
+    margin-bottom: 5px;
+    border-radius: .3em;
+    transition: all .3s ease-out;
+}
+
+.dot {
+    margin-top: 3px;
+    margin-right: 5px;
+    height: 20px;
+    width: 20px;
+    background-color: #bbb;
+    opacity: .75;
+    border-radius: 25%;
+    display: inline-flex;
+    padding: 0;
+    float: right;
+    z-index: 100;
+}
+
+.nameSpan {
+    color: #1565C0;
+    ;
+    font-weight: bold;
+}
+
+ul {
+    counter-reset: li;
+    list-style: none;
+    padding: 0;
+    margin-bottom: 1.5em;
+}
+
+.rounded-list a {
+    position: relative;
+    display: block;
+    padding: .2em .2em .2em 2em;
+    margin: .5em 0;
+    background: #eee;
+    color: #000;
+    border-radius: .3em;
+    transition: all .3s ease-out;
+}
+
+.rounded-list a:hover {
+    background: #ccc;
+}
+
+.rounded-list a:hover:before {
+    background: var(--background-color, #1376BC);
+}
+
+.rounded-list a:before {
+    content: attr(id);
+    position: absolute;
+    left: -.7em;
+    top: 50%;
+    margin-top: -1.0em;
+    background: var(--background-color, #1376BC);
+    height: 1.3em;
+    color: white;
+    font-weight: lighter;
+    min-width: 1.3em;
+    line-height: 1.3em;
+    border: 0.3em solid #eee;
+    text-align: center;
+    font-weight: bold;
+    border-radius: 2em;
+    transition: all 0.3s ease-out;
+}
+
+.stages {
+    overflow-x: auto;
+    display: flex;
+    align-items: flex-end;
+    text-justify: distribute-all-lines;
+    text-align: justify;
+    width: 300px;
+    height: 70%;
+    padding: 5px 20px;
+    position: relative;
+}
+
+.stages>div {
+    z-index: 1;
+    background-color: green;
+    padding: 3px 10px 5px 10px;
+    border-radius: 5px;
+    color: white;
+    font-weight: 500;
+    margin-left: 20px;
+}
+
+.stages>div:first-child {
+    margin-left: 0px;
+}
+
+.horizontalLine {
+    position: absolute;
+    background-color: #004285 !important;
+    opacity: 25%;
+    width: calc(100%);
+    top: 40%;
+    left: 2px;
+    z-index: 0;
+    border-radius: 0%;
+}
+
+.listView {
+    height: 100%;
+    width: 100%;
+    background-color: white;
+}
+
+.cardContainer {
+    width: calc(100% - 20px);
+    padding: 10px;
+}
