@@ -1,6 +1,6 @@
 import "./mainscreen.css";
 import MapView from "../mapview/mapview";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { connect } from "react-redux";
 import InspectorListView from "../component/InspectionListView/inpectorListView";
 import InspectionsListView from "../component/InspectionListView/inspectionsListView";
@@ -21,7 +21,7 @@ import {
 import ExcelToJson from "../helpers/ExcelToJson";
 import "../../node_modules/bootstrap/dist/css/bootstrap.min.css";
 import "../../node_modules/bootstrap/dist/js/bootstrap.bundle.min";
-import shloklogo from "../icons/shloklogo.png";
+import logo from "../icons/logo.png";
 import duration from "../icons/svg/duration.svg";
 import route from "../icons/svg/route.svg";
 import totalins from "../icons/svg/totalins.svg";
@@ -42,14 +42,16 @@ import { DragDropContext, Droppable } from "react-beautiful-dnd";
 import { CiWarning } from "react-icons/ci";
 import LottieControl from "../component/lottieView";
 import { Banner } from "../component/banner";
-import * as panelData from "../utils/panel.json";
+import * as panelData from "../utils/plan.json";
 import * as publishData from "../utils/publish.json";
 import { convertToUrlParams, getParams } from "../helpers/untils";
 import { IoCloudUpload } from "react-icons/io5";
 import { FiSettings } from "react-icons/fi";
 import { FaRoute } from "react-icons/fa";
 import { MdOutlinePublishedWithChanges } from "react-icons/md";
-import { VROOMAPI } from "../config";
+import { VROOMAPI, CROSS_DOMAIN_URL } from "../config";
+import Cookies from 'js-cookie'
+import db from "../indexedDB";
 
 const style = {
   position: "absolute",
@@ -97,6 +99,7 @@ function MainScreen(props) {
   const [today] = useState(new Date());
   const [isDialogOpen, setDialogOpen] = useState(false);
   const [individualData, setIndividualData] = useState(false);
+  const [clientUrl, setClientUrl] = useState("");
   const [showUnoptimizedData, setShowUnoptimizedData] = useState(false);
   const dataIcon = [
     duration,
@@ -129,9 +132,61 @@ function MainScreen(props) {
   const [isZoomed, setIsZoomed] = useState(false);
   const selectRef = useRef(null);
   useEffect(() => { }, [props.mainscreen?.mainData?.routes]);
+  // useEffect(() => {RoutePlanner.computeStatsAfterChange();}, [RoutePlanner.allocated])
+
+
+  const getParamsFromUrl = () => {
+    let params = getParams(window.location.search);
+    let authentication = params.authentication;
+    delete params.authentication;
+    let clientUrl = params.url;
+    params.url += "/GetRouteOptimizationInspectionList";
+    let urlParamString = convertToUrlParams(params);
+    geLatLongFromDB(clientUrl);
+    window.urlParamString = clientUrl;
+    return { urlParamString, authentication };
+  }
+
+
+   function showToastData(message,show){
+    setToastMessage({message:message,show:show})
+  }
+
+  const geLatLongFromDB = async (clientUrl) => {
+
+    let data = {
+      "Url": `${clientUrl}/GetAllCoordinates`,
+      "Method": "Get"
+    }
+    //When the page is loaded this api will fetch all the so far saved coordinates and add them to the local IndexedDB.
+    //So that further api calls will be reduced.
+    const response = await fetch(`${VROOMAPI}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin':'*'
+      },
+      body: JSON.stringify(data)
+    });
+
+    response.json().then((data) => {
+      Promise.all(data.GetAllCoordinatesResult?.map((e) => {
+        var address = e.Address
+        var latLng = {
+          lat: e.Latitude,
+          lng: e.Longitude
+        };
+        //Adding to indexed db
+        db.coordinates.add({ address: data, latLong: latLng });
+      }))
+
+    })
+
+  }
+
+  const { urlParamString, authentication } = useMemo(getParamsFromUrl, []);
 
   const datePickerIconFun = () => {
-    console.log("here");
     let datepickerElement = datePickerRef.current
     datepickerElement.setFocus(true)
   }
@@ -141,6 +196,8 @@ function MainScreen(props) {
     setSelectedIndex(false);
     setShowUnoptimizedData(true);
   };
+
+
 
   const BootstrapTooltip = styled(({ className, ...props }) => (
     <Tooltip {...props} arrow classes={{ popper: className }} />
@@ -167,7 +224,7 @@ function MainScreen(props) {
         try {
           // let ins = {...data, ...RoutePlanner.unallocated.invalid};
           await RoutePlanner.LoadInputFromJson(new Date(), data);
-          await RoutePlanner.Compute(insData);
+          await RoutePlanner.Compute(insData,showToastData);
           setDialogOpen(false);
           setAllocatedName(
             RoutePlanner.allocated.map(
@@ -176,6 +233,7 @@ function MainScreen(props) {
           );
           setStepperBtn(true);
           setLoading(false);
+          setIsPubBtn(true);
           console.timeEnd("ExcelToJson");
         } catch (e) {
           setDialogOpen(false);
@@ -187,12 +245,13 @@ function MainScreen(props) {
     return;
   };
 
-  const handleSvgClick = () => {
+  const handleSvgClick = () => {  
     // Trigger a click event on the select element
     if (selectRef.current) {
       selectRef.current.click();
     }
   };
+
 
 
   const CalculatePreviousDate = () => {
@@ -229,11 +288,6 @@ function MainScreen(props) {
     setShowUnoptimizedData(false);
     CalculatePreviousDate();
     try {
-      let params = getParams(window.location.search);
-      let authentication = params.authentication;
-      delete params.authentication;
-      params.url += "/GetRouteOptimizationInspectionList";
-      let urlParamString = convertToUrlParams(params);
 
       // //BV
       // await RoutePlanner.LoadDataFromAPI(
@@ -294,11 +348,11 @@ function MainScreen(props) {
       setVisibility(false);
       setSelectedIndex(false);
       forceUpdate();
+      setIsPubBtn(true);
       setLoading(false);
     } catch (e) {
       setToastMessage({ show: true, message: "Error in web service" });
       setLoading(false);
-      setIsPubBtn(false);
     }
   };
 
@@ -388,6 +442,7 @@ function MainScreen(props) {
     await RoutePlanner.RemoveInspection(inspectorId, inspectionId, insData);
     if (cLen !== RoutePlanner.allocated.length) setSelectedIndex(false);
     forceUpdate();
+    RoutePlanner.computeStatsAfterChange();
   };
 
   const descriptionData = (addressName, contactNumber, address, code) => {
@@ -509,11 +564,23 @@ function MainScreen(props) {
     if (!isIdleInspector) {
       if (filterValue === "delivery") {
         evnt = evnt.sort((a, b) => a[filterValue][0] - b[filterValue][0]);
-      } else if (filterValue === "duration")
+      } else if (filterValue === "duration") {
         evnt = evnt.sort(
           (a, b) => a[filterValue] + a.service - (b[filterValue] + b.service)
         );
-      else evnt = evnt.sort((a, b) => a[filterValue] - b[filterValue]);
+      }
+      else {
+        evnt = evnt.sort((a, b) => a[filterValue] - b[filterValue]);
+      }
+
+      var modifiedList = evnt.map(function (item) {
+        if (item.color == "#F23333") {
+          item.color = RoutePlanner.getRandomColor()
+          return item;
+        }
+        return item;
+      });
+      evnt = modifiedList ?? [];
     }
     return evnt.map((e, i) => (
       <InspectorListView
@@ -560,6 +627,7 @@ function MainScreen(props) {
     var isAdded = await RoutePlanner.AddInspection(desId, insId, insData);
     setToastMessage({ show: !isAdded, message: "This Inspection cannot be Assigned" })
 
+    RoutePlanner.computeStatsAfterChange();
     forceUpdate();
   };
 
@@ -621,7 +689,7 @@ function MainScreen(props) {
   const getHeader = () => {
     return (
       <div className="navbar">
-        <img src={shloklogo} className="routeLogo" alt="load again" />
+        <img src={logo} className="routeLogo" alt="load again" />
         {getCalenderView()}
       </div>
     );
@@ -856,6 +924,7 @@ function MainScreen(props) {
                 >
                   <CloseIcon
                     onClick={() => {
+              
                       setIndividualData(false);
                       setShowUnoptimizedData(false);
                     }}
@@ -908,6 +977,7 @@ function MainScreen(props) {
                 >
                   <CloseIcon
                     onClick={() => {
+                      
                       setShowUnoptimizedData(false);
                     }}
                   />
@@ -948,7 +1018,6 @@ function MainScreen(props) {
             <button className="resetEl" onClick={() => {
               setFilterValue("");
               onUpdate(RoutePlanner.allocated);
-              setIsPubBtn(true);
             }}>
               <FaRoute size={25} />
             </button>
@@ -1092,6 +1161,7 @@ function MainScreen(props) {
               >
                 <CloseIcon
                   onClick={() => {
+                  
                     setVisibility(false);
                   }}
                 />
@@ -1152,7 +1222,6 @@ function MainScreen(props) {
     const newValue = parseInt(event.target.value, 10);
     const minValue = event.target.min;
     const maxValue = event.target.max;
-
     if (newValue >= minValue && newValue <= maxValue) {
       // Handle valid input
     } else if (!isNaN(newValue)) {
@@ -1266,7 +1335,7 @@ function MainScreen(props) {
                       setLoading(true);
                       let params = getParams(window.location.search);
                       params.url += "/SaveRouteOptimizationDetails";
-                      await RoutePlanner.Publish(
+                      let result = await RoutePlanner.Publish(
                         startDate,
                         VROOMAPI + "url=" +
                         params.url,
@@ -1274,10 +1343,6 @@ function MainScreen(props) {
                       );
                       setIsPublish(false);
                       setLoading(false);
-                      setToastMessage({
-                        show: true,
-                        message: "Published Successfully",
-                      });
                     } catch (e) {
                       setLoading(false);
                       setIsPublish(false);

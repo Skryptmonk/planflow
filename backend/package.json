@@ -21,6 +21,7 @@
     "node-geocoder": "^4.2.0",
     "opencage-api-client": "^1.0.1",
     "pg": "^8.11.0",
+    "redis": "^4.6.11",
     "xlsx": "^0.18.5"
   }
 }

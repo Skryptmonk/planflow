@@ -5,6 +5,7 @@ const nodeGeocoder = require('node-geocoder');
 const reader  = require('xlsx');   
 const xlsx = require('xlsx'); 
 const path = require('path');
+const redis = require('redis');
 class routePlannerController {
   static welcome(req,res) {
     console.log("hii")
@@ -36,7 +37,8 @@ class routePlannerController {
       method: 'post',
       url: process.env.APIURL,
       headers: {
-        'Content-Type': 'application/json'
+        'Content-Type': 'application/json',
+        'Access-Control-Allow-Origin':'*'
       },
       data: JSON.stringify(inputData)
     };

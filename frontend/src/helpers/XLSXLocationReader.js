@@ -1,7 +1,10 @@
 import { read, utils } from 'xlsx';
 import axios from 'axios';
 import XMLParser from 'react-xml-parser';
-import { MAPAPI, APIKEY } from '../config';
+import { MAPAPI, APIKEY ,SERVERIP} from '../config';
+
+
+const mapDataKey = 'map_data';
 
 class XLSXLocationReader {
     static async Read(arrayBuffer, callback) {
@@ -83,10 +86,12 @@ class XLSXLocationReader {
         const res = await axios(config);
         try {
             let psDt = (new XMLParser()).parseFromString(res.data).getElementsByTagName("result")[0].getElementsByTagName("geometry")[0].getElementsByTagName("location")[0];
+         
             return [parseFloat(psDt.children[1].value), parseFloat(psDt.children[0].value)];
+            
         }
         catch (err) {
-            console.log(address);
+            
             return null;
         }
 

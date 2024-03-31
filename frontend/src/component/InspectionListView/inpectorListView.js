@@ -69,6 +69,7 @@ export default (props) => {
     if (visibility == true && !props.isExcludedInspector) {
       props.excludeInspector(props.inspectorData.vehicle, props.inspectorData.steps);
     }
+    RoutePlanner.computeStatsAfterChange()
   };
 
 

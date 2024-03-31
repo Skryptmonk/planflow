@@ -1,6 +1,9 @@
 import axios from "axios";
 import { APIKEY, APIURL, MAPAPI } from "../config";
 import latlongDecoder from "./latlongDecoder";
+import Cookies from "js-cookie";
+import db from "../indexedDB";
+import { VROOMAPI, CROSS_DOMAIN_URL } from "../config";
 
 export default class RoutePlanner {
   static #is_loaded = false;
@@ -11,6 +14,9 @@ export default class RoutePlanner {
   static #allocated = [];
   static #excluded = { inspections: [], inspectors: [] };
   static #unallocated = { inspections: [], inspectors: [], invalid: [] };
+  static #optimized = {};
+  static toastMessageFunction;
+
 
   static get is_loaded() {
     return RoutePlanner.#is_loaded;
@@ -19,6 +25,11 @@ export default class RoutePlanner {
   static get input_data() {
     return RoutePlanner.#input_data;
   }
+
+  static get optimized() {
+    return RoutePlanner.#optimized;
+  }
+
 
   static get selected_date() {
     return RoutePlanner.#selected_date;
@@ -48,6 +59,7 @@ export default class RoutePlanner {
     RoutePlanner.#clearAll();
     RoutePlanner.#selected_date = date;
     RoutePlanner.#input_data = { ...inputData };
+    RoutePlanner.#optimized = JSON.parse(JSON.stringify(inputData));
   }
 
   static SetDate(date) {
@@ -64,6 +76,7 @@ export default class RoutePlanner {
         url: actUrl,
         headers: {
           "Content-Type": "application/json",
+          'Access-Control-Allow-Origin':'*',
           Authorization: token,
         },
       };
@@ -72,6 +85,7 @@ export default class RoutePlanner {
       RoutePlanner.#has_optimized =
         data.Inspectors.filter((e) => e.GeometryData !== "").length > 0;
       RoutePlanner.#input_data = data;
+      RoutePlanner.#optimized = data;
       RoutePlanner.#selected_date = date;
       if (RoutePlanner.#has_optimized) {
         RoutePlanner.#unallocated.inspections = data.Inspections.filter(inspection => !inspection.MetaData);
@@ -196,9 +210,17 @@ export default class RoutePlanner {
       (e) => e.type !== "start" && e.type !== "end"
     ).map(e => RoutePlanner.#addUnallocatedInspection(e.job));
     RoutePlanner.#excludeInspectors(inspectorID);
+
   }
 
   static AddFromExcludeInspectors(inspectorId) {
+    let inspector = RoutePlanner.#optimized.Inspectors.filter(
+      (e) => e.InspectorId === inspectorId
+    )[0];
+    if (!(RoutePlanner.#unallocated.inspectors.includes(inspector)) && !(RoutePlanner.#unallocated.inspectors.includes(inspector))) {
+      RoutePlanner.#input_data.Inspectors.push(inspector);
+    }
+
     RoutePlanner.#addUnallocatedInspector(inspectorId);
     RoutePlanner.excluded.inspectors.forEach((e, i) => {
       if (e.InspectorId === inspectorId) {
@@ -342,7 +364,10 @@ export default class RoutePlanner {
       data: JSON.stringify(data),
     };
     const res = await axios(input);
-    let resData = res.data?.routes ?? false;
+    let resData = res?.data?.routes ?? {};
+    if (Object.keys(resData).length == 0) {
+      return false;
+    }
     if (!resData || resData[0].steps.length - 2 !== jobs.length) return false;
     if (inspector != null) resData[0].color = inspector.color
     resData = RoutePlanner.#attachExtras(resData);
@@ -410,12 +435,12 @@ export default class RoutePlanner {
       };
       return inspector;
     });
-    for (const inspector of allocatedValue) {
+    allocatedValue.map(async(inspector)=>{
       let reqData = {
-        "clientId": params.clientid,
-        "languageId": params.languageld,
-        "verticalId": params.verticalld,
-        "userId": params.userid,
+        "clientId": params.clientId,
+        "languageId": params.languageId,
+        "verticalId": params.verticalId,
+        "userId": params.userId,
         "lstOptimizedData": [inspector]
       };
       let config = {
@@ -423,17 +448,25 @@ export default class RoutePlanner {
         url: url,
         headers: {
           "Content-Type": "application/json",
+          'Access-Control-Allow-Origin':'*',
           Authorization: params.authentication,
         },
         data: reqData
       };
-      await axios(config);
-    }
+      const response = await axios(config);
+      let result = response.data['SaveRouteOptimizationDetailsResult'].Success;
+      if(result){
+        RoutePlanner.toastMessageFunction(`Published Successfully`,true);
+      }else{
+        RoutePlanner.toastMessageFunction(`Inspector Id ${inspector.InspectorId} data cannot be published`,true);
+      }
+      
+    })
   }
 
   static async #addUnallocatedInspector(inspectorID) {
     let inspector = [];
-    inspector = RoutePlanner.#input_data.Inspectors.filter(
+    inspector = RoutePlanner.#optimized.Inspectors.filter(
       (e) => e.InspectorId === inspectorID
     )[0];
     if (!inspector.color) inspector.color = "#F23333"
@@ -441,6 +474,11 @@ export default class RoutePlanner {
       inspector = await RoutePlanner.#appendLatLngAddToInspection(await RoutePlanner.#appendLatLngAdd(inspector));
     }
     RoutePlanner.#unallocated.inspectors.push(inspector);
+    //Adding inspectors removed inspectors from the input to optimize route. 
+    if (!RoutePlanner.#input_data.Inspectors.includes(inspector) && !(RoutePlanner.#unallocated.inspectors.includes(inspector))) {
+      RoutePlanner.input_data.Inspectors.push(inspector);
+    }
+
   }
 
   static #excludeInspectors(inspectorId) {
@@ -449,6 +487,14 @@ export default class RoutePlanner {
       (e) => e.InspectorId === inspectorId
     )[0];
     RoutePlanner.#excluded.inspectors.push(inspector);
+    //Removing the inspector when inspector is moved to excluded.
+    RoutePlanner.excluded.inspectors.forEach((e, i) => {
+      RoutePlanner.#input_data.Inspectors.forEach((f, j) => {
+        if (f.InspectorId === e.InspectorId) {
+          RoutePlanner.input_data.Inspectors.splice(j, 1);
+        }
+      })
+    })
   }
 
   static #addUnallocatedInspection(inspectionID) {
@@ -459,27 +505,75 @@ export default class RoutePlanner {
     RoutePlanner.#unallocated.inspections.push(inspection);
   }
 
-  static async #getLanLngAdd(data) {
-    const local = JSON.parse(localStorage.getItem(data));
-    //To avoid duplicate API calls, we get latLng from Local Storage that we maintained previously
-    if (local !== null && local.lat !== null && local.lng !== null) {
-      return local;
+  static async #sendDataToDB(address, dataToSend) {
+    // Add the calculated address to db.
+
+    let obj = { latitude: dataToSend.lat, longitude: dataToSend.lng, address: address, isValid: true };
+    let saveObject = {
+      "Url": `${window.urlParamString}/SaveGeoCoordinates`,
+      "Body": obj,
+      "Method": "Post"
     }
-    let config = {
-      method: "post",
-      url:
-        MAPAPI + "geocode/json?key=" + APIKEY + "&sensor=false&address=" + data,
-      headers: {
-        "Content-Type": "application/json",
-      },
-    };
-    const res = await axios(config);
-    const latLng = res.data.results[0]?.geometry.location ?? null;
-    if (latLng !== null) {
-      //To avoid duplicate API calls, we maintain latLng in Local Storage
-      localStorage.setItem(data, JSON.stringify(latLng))
+    try {
+      const response = await fetch(`${VROOMAPI}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin':'*'
+        },
+        body: JSON.stringify(saveObject),
+      });
+
+      if (!response.ok) {
+        console.error('Failed to send data:', response.statusText);
+      } else {
+        console.log('Data sent successfully!');
+      }
+    } catch (error) {
+      console.error('Error sending data', error);
     }
-    return latLng;
+  };
+
+
+
+  static async #getLanLngAdd(data,toastFunction) {
+
+
+    try {
+      //Checks if address is in indexed DB
+      const local = await db.coordinates.where('address').equals(data).first() || "{}";
+      //To avoid duplicate API calls, we get latLng from indexed DB that we maintained previously
+      if (local.latLong && local.latLong.lat && local.latLong.lng) {
+        return { lat: parseFloat(local.latLong.lat), lng: parseFloat(local.latLong.lng) };
+      }
+
+      let config = {
+        method: "post",
+        url:
+          MAPAPI + "geocode/json?key=" + APIKEY + "&sensor=false&address=" + data,
+        headers: {
+          "Content-Type": "application/json",
+        },
+      };
+      const res = await axios(config);
+      const latLng = res.data.results[0]?.geometry.location ?? null;
+      const results = res.data.results;
+
+      if (latLng) {
+        for (var i = 0; i < results[0].address_components.length; i++) {
+          var component = results[0].address_components[i];
+          if (component.types.includes('country') && component.long_name === 'Portugal') {
+            db.coordinates.add({ address: data, latLong: latLng });
+            await RoutePlanner.#sendDataToDB(data, latLng)
+            return latLng;
+          }   
+      }
+      RoutePlanner.toastMessageFunction(`Inspector address ${results[0].formatted_address} is outside Portugal`,true)
+      }
+      return latLng;
+    } catch (e) {
+      console.error('Error retriving address:', this.excluded);
+    }
   }
 
   static async #appendLatLngAdd(data) {
@@ -510,110 +604,121 @@ export default class RoutePlanner {
     return data;
   }
 
-  static async Compute(config) {
-    RoutePlanner.excluded.inspectors.forEach((e, i) => {
-      RoutePlanner.#input_data.Inspectors.forEach((f, j) => {
-        if (f.InspectorId === e.InspectorId) {
-          RoutePlanner.input_data.Inspectors.splice(j, 1);
-        }
+  static async computeStatsAfterChange() {
+    this.#computeStats(RoutePlanner.allocated, RoutePlanner.allocated);
+  }
+
+  static async Compute(config,toastFunction) {
+    RoutePlanner.toastMessageFunction = toastFunction
+    try {
+      RoutePlanner.excluded.inspectors.forEach((e, i) => {
+        RoutePlanner.#input_data.Inspectors.forEach((f, j) => {
+          if (f.InspectorId === e.InspectorId) {
+            RoutePlanner.input_data.Inspectors.splice(j, 1);
+          }
+        })
       })
-    })
 
-    const jobsDt = [];
-    //To avoid parallel api fetch we changed Promise.all to for-loop
-    for (const e of RoutePlanner.#input_data.Inspections) {
-      if (await RoutePlanner.#isValidAddress(e.Address + ", " + e.Location + " - " + e.PostalCode + ", " + e.Country)) {
-        jobsDt.push(await RoutePlanner.#appendLatLngAdd(e));
-      } else {
-        if (!RoutePlanner.unallocated.invalid?.includes(e)) RoutePlanner.unallocated.invalid.push(e);
+      const jobsDt = [];
+
+      //To avoid parallel api fetch we changed Promise.all to for-loop
+      for (const e of RoutePlanner.#input_data.Inspections) {
+        if (await RoutePlanner.#isValidAddress(e.Address + ", " + e.Location + " - " + e.PostalCode + ", " + e.Country)) {
+          jobsDt.push(await RoutePlanner.#appendLatLngAdd(e));
+        } else {
+          if (!RoutePlanner.unallocated.invalid?.includes(e)) RoutePlanner.unallocated.invalid.push(e);
+        }
       }
-    }
 
-    let jobs = jobsDt.map((e) => {
-      if (e) {
+      let jobs = jobsDt.map((e) => {
+        if (e) {
+          return {
+            description: JSON.stringify(e),
+            id: e.ScheduleId,
+            contactNumber: e.ContactNumber,
+            contactName: e.ContactName,
+            delivery: [1],
+            skills: [1],
+            location: [e.latLng.lng, e.latLng.lat],
+            service: config.avgInsTime * 60,
+            Address: e.Address,
+            floor: e.Floor,
+            doorNo: e.DoorNo,
+            startTime: e.StartTime,
+            endTime: e.EndTime,
+            ScheduleDate: e.ScheduleDate,
+            block: e.Block,
+            country: e.Country,
+            region: e.Region,
+            place: e.Location,
+            metaData: e.MetaData
+          };
+        }
+      });
+
+      const vehicleDt = [];
+      //To avoid parallel api fetch we changed Promise.all to for-loop
+       for (const e of RoutePlanner.#input_data.Inspectors) {
+          const result = await RoutePlanner.#appendLatLngAddToInspection(e);
+          vehicleDt.push(result);
+   
+     }
+
+      let vehicles = vehicleDt.map((e) => {
         return {
           description: JSON.stringify(e),
-          id: e.ScheduleId,
-          contactNumber: e.ContactNumber,
-          contactName: e.ContactName,
-          delivery: [1],
-          skills: [1],
-          location: [e.latLng.lng, e.latLng.lat],
-          service: config.avgInsTime * 60,
-          Address: e.Address,
-          floor: e.Floor,
-          doorNo: e.DoorNo,
-          startTime: e.StartTime,
-          endTime: e.EndTime,
-          ScheduleDate: e.ScheduleDate,
-          block: e.Block,
+          id: e.InspectorId,
+          capacity: [config.max_inspection_count],
+          skills: [1, 5],
+          start: [e.latLng.lng, e.latLng.lat],
+          end: [e.latLng.lng, e.latLng.lat],
+          time_window: [0, config.time * 60 * 60],
+          address: e.Address,
+          name: e.InspectorName,
+          location: e.Location,
+          postalCode: e.PostalCode,
           country: e.Country,
-          region: e.Region,
-          place: e.Location,
-          metaData: e.MetaData
+          geomentry: e.GeometryData,
+          metaData: e.MetaData,
         };
-      }
-    });
-
-    const vehicleDt = [];
-    //To avoid parallel api fetch we changed Promise.all to for-loop
-    for (const e of RoutePlanner.#input_data.Inspectors) {
-      const result = await RoutePlanner.#appendLatLngAddToInspection(e);
-      vehicleDt.push(result);
-    }
-
-    let vehicles = vehicleDt.map((e) => {
-      return {
-        description: JSON.stringify(e),
-        id: e.InspectorId,
-        capacity: [config.max_inspection_count],
-        skills: [1, 5],
-        start: [e.latLng.lng, e.latLng.lat],
-        end: [e.latLng.lng, e.latLng.lat],
-        time_window: [0, config.time * 60 * 60],
-        address: e.Address,
-        name: e.InspectorName,
-        location: e.Location,
-        postalCode: e.PostalCode,
-        country: e.Country,
-        geomentry: e.GeometryData,
-        metaData: e.MetaData,
-      };
-    });
-    let data = {
-      jobs: jobs.filter((e) => e != null),
-      vehicles: vehicles,
-      options: { g: true },
-      shipments: [],
-    };
-    let input = {
-      method: "post",
-      url: APIURL,
-      headers: {
-        "Content-Type": "application/json",
-      },
-      data: JSON.stringify(data),
-    };
-    const res = await axios(input);
-    let resData = res.data?.routes ?? false;
-    if (!resData) return {};
-    resData = RoutePlanner.#attachExtras(resData);
-    RoutePlanner.#unallocated.inspections.length = 0;
-    RoutePlanner.#unallocated.inspectors.length = 0;
-    RoutePlanner.#allocated = resData;
-    res.data?.unassigned.forEach((e) => {
-      if (e.type === "job") RoutePlanner.#addUnallocatedInspection(e.id);
-      else RoutePlanner.#addUnallocatedInspector(e.id);
-    });
-    if (resData.length !== vehicles.length) {
-      let allocatedID = resData.map((e) => e.vehicle);
-      vehicles.forEach((vehicle) => {
-        if (allocatedID.indexOf(vehicle.id) === -1)
-          RoutePlanner.#addUnallocatedInspector(vehicle.id);
       });
+      let data = {
+        jobs: jobs.filter((e) => e != null),
+        vehicles: vehicles,
+        options: { g: true },
+        shipments: [],
+      };
+      let input = {
+        method: "post",
+        url: APIURL,
+        headers: {
+          "Content-Type": "application/json",
+        },
+        data: JSON.stringify(data),
+      };
+      const res = await axios(input);
+      let resData = res.data?.routes ?? false;
+      if (!resData) return {};
+      resData = RoutePlanner.#attachExtras(resData);
+      RoutePlanner.#unallocated.inspections.length = 0;
+      RoutePlanner.#unallocated.inspectors.length = 0;
+      RoutePlanner.#allocated = resData;
+      res.data?.unassigned.forEach((e) => {
+        if (e.type === "job") RoutePlanner.#addUnallocatedInspection(e.id);
+        else RoutePlanner.#addUnallocatedInspector(e.id);
+      });
+      if (resData.length !== vehicles.length) {
+        let allocatedID = resData.map((e) => e.vehicle);
+        vehicles.forEach((vehicle) => {
+          if (allocatedID.indexOf(vehicle.id) === -1)
+            RoutePlanner.#addUnallocatedInspector(vehicle.id);
+        });
+      }
+      RoutePlanner.#has_optimized = true;
+      RoutePlanner.#computeStats(resData, res.data.routes);
+    }catch(e){
+      console.log(e);
     }
-    RoutePlanner.#has_optimized = true;
-    RoutePlanner.#computeStats(resData, res.data.routes);
   }
 
   static #attachExtras(data) {
@@ -627,6 +732,24 @@ export default class RoutePlanner {
     return data;
   }
 
+  static shuffle(array) {
+    let currentIndex = array.length, randomIndex;
+
+    // While there remain elements to shuffle.
+    while (currentIndex > 0) {
+
+      // Pick a remaining element.
+      randomIndex = Math.floor(Math.random() * currentIndex);
+      currentIndex--;
+
+      // And swap it with the current element.
+      [array[currentIndex], array[randomIndex]] = [
+        array[randomIndex], array[currentIndex]];
+    }
+
+    return array;
+  }
+
   static colorsArray = [
     '#F90000', '#00A3FF', '#005A8C', '#1376BC', '#00068A',
     '#226F54', '#A71D31', '#6F7C12', '#483519', '#8F00FF',
@@ -637,6 +760,7 @@ export default class RoutePlanner {
   static usedColors = [];
 
   static getRandomColor() {
+    const excludedColor = "#F23333";
     if (this.usedColors.length === this.colorsArray.length) {
       // If all colors have been used, reset the usedColors array
       this.usedColors = [];
@@ -645,8 +769,8 @@ export default class RoutePlanner {
     let randomColor;
     do {
       randomIndex = Math.floor(Math.random() * this.colorsArray.length);
-      randomColor = this.colorsArray[randomIndex];
-    } while (this.usedColors.includes(randomColor));
+      randomColor = this.shuffle(this.colorsArray)[randomIndex];
+    } while (this.usedColors.includes(randomColor) || randomColor === excludedColor);
 
     this.usedColors.push(randomColor);
     return randomColor;
@@ -675,26 +799,42 @@ export default class RoutePlanner {
     RoutePlanner.#allocated = [];
     RoutePlanner.#unallocated = { inspections: [], inspectors: [], invalid: [] };
     RoutePlanner.#excluded = { inspections: [], inspectors: [] };
+    RoutePlanner.#optimized = {};
   }
 
   static async #isValidAddress(address) {
-    const local = JSON.parse(localStorage.getItem(address));
-    //To avoid duplicate API calls, we get latLng from Local Storage that we maintained previously
-    if (local !== null && local.lat !== null && local.lng !== null) {
+
+    //Fetches the address if present in indexed db
+    const local = await db.coordinates.where('address').equals(address).first() || "{}";
+    //To avoid duplicate API calls, we get latLng from indexed db that we added previously
+    if (local && local.latLong && local.latLong.lat && local.latLong.lng) {
       return true;
     }
+
     const encodedAddress = encodeURIComponent(address);
     const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodedAddress}&key=${APIKEY}`;
     try {
       const response = await axios.get(url);
       const results = response.data.results;
       if (results.length > 0) {
-        //To avoid duplicate API calls, we maintain latLng in Local Storage
-        localStorage.setItem(address, JSON.stringify(results[0]?.geometry.location ?? null))
+        // To avoid duplicate API calls, we maintain latLng in Cookies
+        // Check whether the address is located in portugal or not
+        for (var i = 0; i < results[0].address_components.length; i++) {
+
+          var component = results[0].address_components[i];
+
+
+          if (component.types.includes('country') && component.long_name === 'Portugal') {
+            await db.coordinates.add({ address: address, latLong: results[0]?.geometry.location ?? null });
+            return results.length > 0
+          } 
       }
-      return results.length > 0;
+      RoutePlanner.toastMessageFunction(`Inspection ${results[0].formatted_address} is outside Portugal, Please Try with a address inside Portugal`,true)
+      }
+      RoutePlanner.toastMessageFunction("We couldn't Process your request now please try again after some time",true)
+      return false
     } catch (error) {
-      console.error('Error validating address:', error);
+      console.log('Error validating address:');
       return false;
     }
   }
