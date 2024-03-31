@@ -16,17 +16,17 @@ services:
     ports:
       - 4001:4001
 
-  vroom:
-    image: vroomvrp/vroom-docker:v1.11.0
-    container_name: vroom_server
-    volumes:
-      - ./vroom-conf/:/conf
-    environment:
-      - VROOM_ROUTER=osrm
-    ports:
-      - 3000:3000
-    depends_on:
-      - osrm
+  # vroom:
+  #   image: vroomvrp/vroom-docker:v1.11.0
+  #   container_name: vroom_server
+  #   volumes:
+  #     - ./vroom-conf/:/conf
+  #   environment:
+  #     - VROOM_ROUTER=osrm
+  #   ports:
+  #     - 3000:3000
+  #   depends_on:
+  #     - osrm
 
   # osrm-extract:
   #   image: osrm/osrm-backend
